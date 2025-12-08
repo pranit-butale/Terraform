@@ -1,15 +1,18 @@
-PROVIDER CONFIGURATION
-----------------------
+###############################################
+# PROVIDER CONFIGURATION
+###############################################
 
 provider "aws" {
   region = "us-east-1"
 }
 
+########################################################
+# VPC + SUBNETS + INTERNET GATEWAY + ROUTES
+########################################################
 
-
-VPC AND SUBNETS
-----------------
-
+# ---------------------
+# VPC
+# ---------------------
 resource "aws_vpc" "my_vpc" {
   cidr_block       = "10.0.0.0/16"
   instance_tenancy = "default"
@@ -20,10 +23,14 @@ resource "aws_vpc" "my_vpc" {
   }
 }
 
+# ---------------------
+# Public Subnet 1
+# ---------------------
 resource "aws_subnet" "my_public" {
-  vpc_id            = aws_vpc.my_vpc.id
-  cidr_block        = "10.0.0.0/17"
-  availability_zone = "us-east-1a"
+  vpc_id                  = aws_vpc.my_vpc.id
+  cidr_block              = "10.0.0.0/17"
+  availability_zone       = "us-east-1a"
+  map_public_ip_on_launch = true
 
   tags = {
     env  = "dev"
@@ -31,10 +38,14 @@ resource "aws_subnet" "my_public" {
   }
 }
 
+# ---------------------
+# Public Subnet 2
+# ---------------------
 resource "aws_subnet" "my_public2" {
-  vpc_id            = aws_vpc.my_vpc.id
-  cidr_block        = "10.0.128.0/17"
-  availability_zone = "us-east-1b"
+  vpc_id                  = aws_vpc.my_vpc.id
+  cidr_block              = "10.0.128.0/17"
+  availability_zone       = "us-east-1b"
+  map_public_ip_on_launch = true
 
   tags = {
     env  = "dev"
@@ -42,11 +53,9 @@ resource "aws_subnet" "my_public2" {
   }
 }
 
-
-
-INTERNET GATEWAY AND ROUTES
----------------------------
-
+# ---------------------
+# Internet Gateway
+# ---------------------
 resource "aws_internet_gateway" "my_igw" {
   vpc_id = aws_vpc.my_vpc.id
 
@@ -56,6 +65,9 @@ resource "aws_internet_gateway" "my_igw" {
   }
 }
 
+# ---------------------
+# Public Route Table
+# ---------------------
 resource "aws_route_table" "public_rt" {
   vpc_id = aws_vpc.my_vpc.id
 
@@ -65,12 +77,18 @@ resource "aws_route_table" "public_rt" {
   }
 }
 
+# ---------------------
+# Route 0.0.0.0/0 → IGW
+# ---------------------
 resource "aws_route" "public_route" {
   route_table_id         = aws_route_table.public_rt.id
   destination_cidr_block = "0.0.0.0/0"
   gateway_id             = aws_internet_gateway.my_igw.id
 }
 
+# ---------------------
+# Route Associations
+# ---------------------
 resource "aws_route_table_association" "public_association" {
   subnet_id      = aws_subnet.my_public.id
   route_table_id = aws_route_table.public_rt.id
@@ -81,16 +99,18 @@ resource "aws_route_table_association" "public_association2" {
   route_table_id = aws_route_table.public_rt.id
 }
 
-
-
-SECURITY GROUP
---------------
+########################################################
+# SECURITY GROUP — HTTP + SSH
+########################################################
 
 resource "aws_security_group" "aws_sg2" {
   name        = "sg_name"
-  description = "Allow HTTP and SSH"
+  description = "Allow HTTP, SSH inbound and all outbound"
   vpc_id      = aws_vpc.my_vpc.id
 
+  # ---------------------
+  # Allow HTTP
+  # ---------------------
   ingress {
     from_port   = 80
     to_port     = 80
@@ -98,6 +118,9 @@ resource "aws_security_group" "aws_sg2" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # ---------------------
+  # Allow SSH
+  # ---------------------
   ingress {
     from_port   = 22
     to_port     = 22
@@ -105,6 +128,9 @@ resource "aws_security_group" "aws_sg2" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # ---------------------
+  # Allow ALL outbound
+  # ---------------------
   egress {
     from_port   = 0
     to_port     = 0
@@ -117,52 +143,55 @@ resource "aws_security_group" "aws_sg2" {
   }
 }
 
-
-
-TARGET GROUP
-------------
+########################################################
+# TARGET GROUP FOR ASG
+########################################################
 
 resource "aws_lb_target_group" "tg_asg" {
-  name        = "tg_test_asg"
+  name        = "tg-testasg"
   port        = 80
   protocol    = "HTTP"
   vpc_id      = aws_vpc.my_vpc.id
   target_type = "instance"
 }
 
-
-
-APPLICATION LOAD BALANCER
--------------------------
+########################################################
+# APPLICATION LOAD BALANCER
+########################################################
 
 resource "aws_lb" "test" {
   name               = "my-alb"
   internal           = false
   load_balancer_type = "application"
-  security_groups    = [aws_security_group.aws_sg2.id]
+
+  security_groups = [
+    aws_security_group.aws_sg2.id
+  ]
 
   subnets = [
     aws_subnet.my_public.id,
     aws_subnet.my_public2.id
   ]
 
-  enable_deletion_protection = true
+  enable_deletion_protection = false
 
   tags = {
     env = "dev"
   }
 }
 
-
-
-LAUNCH TEMPLATE
----------------
+########################################################
+# LAUNCH TEMPLATE (EC2 CONFIGURATION)
+########################################################
 
 resource "aws_launch_template" "demo_template" {
   name_prefix   = "demo-template"
   image_id      = "ami-0ecb62995f68bb549"
   instance_type = "t3.micro"
 
+  # ---------------------
+  # User Data (Install Apache)
+  # ---------------------
   user_data = base64encode(<<EOF
 #!/bin/bash
 yum install -y httpd
@@ -173,31 +202,32 @@ EOF
   )
 }
 
-
-
-AUTO SCALING GROUP
-------------------
+########################################################
+# AUTO SCALING GROUP
+########################################################
 
 resource "aws_autoscaling_group" "my_autosg" {
-  desired_capacity = 1
+
+  desired_capacity = 2
   max_size         = 3
   min_size         = 1
 
+  # ASG Subnets
   vpc_zone_identifier = [
     aws_subnet.my_public.id,
     aws_subnet.my_public2.id
   ]
 
+  # Launch Template reference
   launch_template {
     id      = aws_launch_template.demo_template.id
     version = "$Latest"
   }
 }
 
-
-
-ATTACH ASG TO TARGET GROUP
---------------------------
+########################################################
+# ATTACH ASG TO LOAD BALANCER TARGET GROUP
+########################################################
 
 resource "aws_autoscaling_attachment" "example" {
   autoscaling_group_name = aws_autoscaling_group.my_autosg.id
