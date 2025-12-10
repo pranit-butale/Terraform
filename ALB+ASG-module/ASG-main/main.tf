@@ -67,7 +67,7 @@ resource "aws_route" "public_route" {
 
 resource "aws_route_table_association" "public_association" {
   subnet_id      = aws_subnet.my_public.id
- route_table_id = aws_route_table.public_rt.id
+  route_table_id = aws_route_table.public_rt.id
 }
 
 resource "aws_route_table_association" "public_association2" {
@@ -111,7 +111,7 @@ resource "aws_security_group" "aws_sg2" {
 resource "aws_lb" "test" {
   name               = "my-alb"
   internal           = false
-  load_balancer_type = var.alb_type
+  load_balancer_type = var.lb_type
   security_groups    = [aws_security_group.aws_sg2.id]
   subnets            = [
     aws_subnet.my_public.id,
@@ -182,4 +182,85 @@ resource "aws_lb_listener_rule" "my_lb_listener_rule_mobile" {
   }
 }
 
+# Launch Template 1 (main)
+resource "aws_launch_template" "demo_template" {
+  name_prefix   = "demo-template"
+  image_id      = var.ami_id1
+  instance_type = var.instance_type1
 
+  vpc_security_group_ids = [aws_security_group.aws_sg2.id]   
+
+  user_data = base64encode(<<EOT
+#!/bin/bash
+sudo apt update -y
+sudo apt install -y nginx
+echo "<h1> hello $HOSTNAME </h1>" > /var/www/html/index.html
+sudo systemctl start nginx
+sudo systemctl enable nginx
+EOT
+  )
+}
+
+# Launch Template 2 (mobile) — FIXED HEREDOC + FIXED SCRIPT
+resource "aws_launch_template" "demo_mobile" {
+  name_prefix   = "demo-mobile"
+  image_id      = var.ami_id1
+  instance_type = var.instance_type1
+
+  vpc_security_group_ids = [aws_security_group.aws_sg2.id]   
+
+  user_data = base64encode(<<EOT
+#!/bin/bash
+sudo apt update -y
+sudo apt install -y nginx
+
+sudo mkdir -p /var/www/html/mobile
+echo "<h1> welcome to mobile page $HOSTNAME </h1>" > /var/www/html/mobile/index.html
+
+sudo systemctl enable nginx
+sudo systemctl start nginx
+EOT
+  )
+}
+
+# Auto Scaling Groups
+resource "aws_autoscaling_group" "my_autosg" {
+  desired_capacity   = 2
+  max_size           = 3
+  min_size           = 1
+
+  vpc_zone_identifier = [
+    aws_subnet.my_public.id,
+    aws_subnet.my_public2.id
+  ]
+
+  launch_template {
+    id      = aws_launch_template.demo_template.id
+    version = aws_launch_template.demo_template.latest_version
+  }
+
+  target_group_arns = [
+    aws_lb_target_group.tg_asg.arn
+  ]
+}
+
+resource "aws_autoscaling_group" "asg_mobile" {
+  name             = "asg-mobile"
+  desired_capacity = 2
+  max_size         = 3
+  min_size         = 1
+
+  vpc_zone_identifier = [
+    aws_subnet.my_public.id,
+    aws_subnet.my_public2.id
+  ]
+
+  launch_template {
+    id      = aws_launch_template.demo_mobile.id
+    version = aws_launch_template.demo_mobile.latest_version
+  }
+
+  target_group_arns = [
+    aws_lb_target_group.tg_mobile.arn
+  ]
+}
