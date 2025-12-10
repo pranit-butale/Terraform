@@ -1,4 +1,3 @@
-
 # Provider
 provider "aws" {
   region = "us-east-1"
@@ -14,7 +13,6 @@ resource "aws_vpc" "my_vpc" {
     name = "my_tf_vpc"
   }
 }
-
 
 # Subnets
 resource "aws_subnet" "my_public" {
@@ -40,7 +38,6 @@ resource "aws_subnet" "my_public2" {
     name = "tf_ps2"
   }
 }
-
 
 # Internet Gateway
 resource "aws_internet_gateway" "my_igw" {
@@ -135,6 +132,12 @@ resource "aws_lb_target_group" "tg_asg" {
   protocol    = "HTTP"
   vpc_id      = aws_vpc.my_vpc.id
   target_type = "instance"
+
+  health_check {
+    path     = "/"
+    port     = "traffic-port"    
+    protocol = "HTTP"
+  }
 }
 
 resource "aws_lb_target_group" "tg_mobile" {
@@ -146,11 +149,10 @@ resource "aws_lb_target_group" "tg_mobile" {
 
   health_check {
     path     = "/mobile/"
-    port     = 80
+    port     = "traffic-port"    
     protocol = "HTTP"
   }
 }
-
 
 # Listener + Listener Rule
 resource "aws_lb_listener" "http_listener" {
@@ -180,38 +182,46 @@ resource "aws_lb_listener_rule" "my_lb_listener_rule_mobile" {
   }
 }
 
-# Launch Templates
+# Launch Template 1 (main)
 resource "aws_launch_template" "demo_template" {
   name_prefix   = "demo-template"
   image_id      = "ami-0ecb62995f68bb549"
   instance_type = "t3.micro"
-  key_name = "Virginiakey.pem"
 
-  user_data = base64encode(<<EOF
+  vpc_security_group_ids = [aws_security_group.aws_sg2.id]   
+
+  user_data = base64encode(<<EOT
 #!/bin/bash
-yum install -y httpd
-systemctl start httpd
-systemctl enable httpd
-echo "Hello world" > /var/www/html/index.html
-EOF
+sudo apt update -y
+sudo apt install -y nginx
+echo "<h1> hello $HOSTNAME </h1>" > /var/www/html/index.html
+sudo systemctl start nginx
+sudo systemctl enable nginx
+EOT
   )
 }
 
+# Launch Template 2 (mobile) — FIXED HEREDOC + FIXED SCRIPT
 resource "aws_launch_template" "demo_mobile" {
   name_prefix   = "demo-mobile"
   image_id      = "ami-0ecb62995f68bb549"
   instance_type = "t3.micro"
 
-  user_data = base64encode(<<EOF
+  vpc_security_group_ids = [aws_security_group.aws_sg2.id]   
+
+  user_data = base64encode(<<EOT
 #!/bin/bash
-yum install -y httpd
-systemctl start httpd
-systemctl enable httpd
-echo "welcome to mobile page" > /var/www/html/index.html
-EOF
+sudo apt update -y
+sudo apt install -y nginx
+
+sudo mkdir -p /var/www/html/mobile
+echo "<h1> welcome to mobile page $HOSTNAME </h1>" > /var/www/html/mobile/index.html
+
+sudo systemctl enable nginx
+sudo systemctl start nginx
+EOT
   )
 }
-
 
 # Auto Scaling Groups
 resource "aws_autoscaling_group" "my_autosg" {
