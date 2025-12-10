@@ -9,7 +9,3 @@ variable "lb_type" {}
 variable "ami_id1" {}
 
 variable "instance_type1" {}
-
-
-
-
