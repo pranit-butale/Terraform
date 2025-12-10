@@ -5,7 +5,7 @@ provider "aws" {
 
 module "asg_module" {
 
-    source = "./ASG-main"
+    source = "./MAIN-ALB+ASG"
 
     vpc       = var.vpc
     subnet_1  = var.subnet_1
