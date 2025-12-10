@@ -1,4 +1,3 @@
-
 # Provider
 provider "aws" {
   region = "us-east-1"
@@ -6,7 +5,7 @@ provider "aws" {
 
 # VPC
 resource "aws_vpc" "my_vpc" {
-  cidr_block       = "10.0.0.0/16"
+  cidr_block       = var.vpc_cidr
   instance_tenancy = "default"
 
   tags = {
@@ -15,11 +14,10 @@ resource "aws_vpc" "my_vpc" {
   }
 }
 
-
 # Subnets
 resource "aws_subnet" "my_public" {
   vpc_id                  = aws_vpc.my_vpc.id
-  cidr_block              = "10.0.0.0/17"
+  cidr_block              = var.subnet1
   availability_zone       = "us-east-1a"
   map_public_ip_on_launch = true
 
@@ -31,7 +29,7 @@ resource "aws_subnet" "my_public" {
 
 resource "aws_subnet" "my_public2" {
   vpc_id                  = aws_vpc.my_vpc.id
-  cidr_block              = "10.0.128.0/17"
+  cidr_block              = var.subnet2
   availability_zone       = "us-east-1b"
   map_public_ip_on_launch = true
 
@@ -40,7 +38,6 @@ resource "aws_subnet" "my_public2" {
     name = "tf_ps2"
   }
 }
-
 
 # Internet Gateway
 resource "aws_internet_gateway" "my_igw" {
@@ -70,7 +67,7 @@ resource "aws_route" "public_route" {
 
 resource "aws_route_table_association" "public_association" {
   subnet_id      = aws_subnet.my_public.id
-  route_table_id = aws_route_table.public_rt.id
+ route_table_id = aws_route_table.public_rt.id
 }
 
 resource "aws_route_table_association" "public_association2" {
@@ -114,7 +111,7 @@ resource "aws_security_group" "aws_sg2" {
 resource "aws_lb" "test" {
   name               = "my-alb"
   internal           = false
-  load_balancer_type = "application"
+  load_balancer_type = var.alb_type
   security_groups    = [aws_security_group.aws_sg2.id]
   subnets            = [
     aws_subnet.my_public.id,
@@ -135,6 +132,12 @@ resource "aws_lb_target_group" "tg_asg" {
   protocol    = "HTTP"
   vpc_id      = aws_vpc.my_vpc.id
   target_type = "instance"
+
+  health_check {
+    path     = "/"
+    port     = "traffic-port"    
+    protocol = "HTTP"
+  }
 }
 
 resource "aws_lb_target_group" "tg_mobile" {
@@ -146,11 +149,10 @@ resource "aws_lb_target_group" "tg_mobile" {
 
   health_check {
     path     = "/mobile/"
-    port     = 80
+    port     = "traffic-port"    
     protocol = "HTTP"
   }
 }
-
 
 # Listener + Listener Rule
 resource "aws_lb_listener" "http_listener" {
@@ -178,79 +180,4 @@ resource "aws_lb_listener_rule" "my_lb_listener_rule_mobile" {
       values = ["/mobile/*"]
     }
   }
-}
-
-# Launch Templates
-resource "aws_launch_template" "demo_template" {
-  name_prefix   = "demo-template"
-  image_id      = "ami-0ecb62995f68bb549"
-  instance_type = "t3.micro"
-  key_name = "Virginiakey.pem"
-
-  user_data = base64encode(<<EOF
-#!/bin/bash
-yum install -y httpd
-systemctl start httpd
-systemctl enable httpd
-echo "Hello world" > /var/www/html/index.html
-EOF
-  )
-}
-
-resource "aws_launch_template" "demo_mobile" {
-  name_prefix   = "demo-mobile"
-  image_id      = "ami-0ecb62995f68bb549"
-  instance_type = "t3.micro"
-
-  user_data = base64encode(<<EOF
-#!/bin/bash
-yum install -y httpd
-systemctl start httpd
-systemctl enable httpd
-echo "welcome to mobile page" > /var/www/html/index.html
-EOF
-  )
-}
-
-
-# Auto Scaling Groups
-resource "aws_autoscaling_group" "my_autosg" {
-  desired_capacity   = 2
-  max_size           = 3
-  min_size           = 1
-
-  vpc_zone_identifier = [
-    aws_subnet.my_public.id,
-    aws_subnet.my_public2.id
-  ]
-
-  launch_template {
-    id      = aws_launch_template.demo_template.id
-    version = aws_launch_template.demo_template.latest_version
-  }
-
-  target_group_arns = [
-    aws_lb_target_group.tg_asg.arn
-  ]
-}
-
-resource "aws_autoscaling_group" "asg_mobile" {
-  name             = "asg-mobile"
-  desired_capacity = 2
-  max_size         = 3
-  min_size         = 1
-
-  vpc_zone_identifier = [
-    aws_subnet.my_public.id,
-    aws_subnet.my_public2.id
-  ]
-
-  launch_template {
-    id      = aws_launch_template.demo_mobile.id
-    version = aws_launch_template.demo_mobile.latest_version
-  }
-
-  target_group_arns = [
-    aws_lb_target_group.tg_mobile.arn
-  ]
 }
