@@ -1,19 +1,7 @@
-variable "ami_id" {
-    default = "ami-0ecb62995f68bb549"
-  
-}
+variable "ami_id" {}
 
-variable "instance_type" {
-    default = "t3.medium"
-  
-}
+variable "instance_type" {}
 
-variable "key" {
-    default = "virginiakey"
-  
-}
+variable "key" {}
 
-variable "sg" {
-    default = "sg-0798e75a64a11e7a6"
-  
-}
+variable "sg" {}
