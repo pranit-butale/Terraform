@@ -1,5 +1,5 @@
 provider "aws" {
-    region = "us-east-1"
+    region = var.region
   
 }
 
@@ -56,11 +56,11 @@ resource "aws_eks_cluster" "eks_cluster" {
   name = "my-cluster"
 
   access_config {
-    authentication_mode = "API"
+    authentication_mode = var.auth_mode
   }
 
   role_arn = aws_iam_role.eks_cluster_role.arn
-  version  = "1.34"
+  version  = var.version_cluster
 
   vpc_config {
   subnet_ids = data.aws_subnets.default_subnets.ids
@@ -120,7 +120,6 @@ resource "aws_eks_node_group" "eks_node" {
   node_group_name = "my-nodes"
   node_role_arn   = aws_iam_role.eks_cluster_node_role.arn
   subnet_ids = data.aws_subnets.default_subnets.ids
-  
   scaling_config {
     desired_size = 1
     max_size     = 2
@@ -138,7 +137,3 @@ resource "aws_eks_node_group" "eks_node" {
     aws_iam_role_policy_attachment.AmazonEKS_WorkerNodePolicy,
   ]
 }
-
-
-
-cxgfshkjdsra
