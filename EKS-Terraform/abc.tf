@@ -138,3 +138,7 @@ resource "aws_eks_node_group" "eks_node" {
     aws_iam_role_policy_attachment.AmazonEKS_WorkerNodePolicy,
   ]
 }
+
+
+
+cxgfshkjdsra
